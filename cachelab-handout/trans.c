@@ -180,15 +180,10 @@ void trans(int M, int N, int A[N][M], int B[M][N])
 
 }
 
-/*
- * registerFunctions-此函数向驱动程序注册转置函数。
- */
 void registerFunctions()
 {
-    /* 注册解决方案函数  */
     registerTransFunction(transpose_submit, transpose_submit_desc); 
 
-    /* 注册任何附加转置函数 */
     registerTransFunction(trans, trans_desc); 
 
 }
