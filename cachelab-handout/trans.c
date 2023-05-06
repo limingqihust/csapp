@@ -157,8 +157,6 @@ if(M==32 && N==32) {
     }
 
 
-
-//**************************************End**********************************************************
 }
 
 /* 
@@ -184,7 +182,6 @@ void trans(int M, int N, int A[N][M], int B[M][N])
 
 /*
  * registerFunctions-此函数向驱动程序注册转置函数。
- *在运行时，驱动程序将评估每个注册的函数并总结它们的性能。这是一种试验不同转置策略的简便方法。
  */
 void registerFunctions()
 {
@@ -196,9 +193,6 @@ void registerFunctions()
 
 }
 
-/* 
- * is_transpose - 函数检查B是否是A的转置。在从转置函数返回之前，可以通过调用它来检查转置的正确性。
- */
 int is_transpose(int M, int N, int A[N][M], int B[M][N])
 {
     int i, j;
