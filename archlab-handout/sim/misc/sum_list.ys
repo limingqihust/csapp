@@ -1,0 +1,45 @@
+    .pos 0
+    irmovq stack,%rsp
+    call main
+    halt
+
+
+    .align 8
+ele0:
+    .quad 0x1
+    .quad ele1
+ele1:
+    .quad 0x2
+    .quad ele2
+ele2:
+    .quad 0x3
+    .quad ele3
+ele3:
+    .quad 0x4
+    .quad 0
+
+main:
+    irmovq ele0,%rax
+    call sum_list
+    ret
+
+
+# %rbx:∫Õ
+# %rax:µÿ÷∑
+sum_list:
+    irmovq $0,%rbx
+
+loop:
+    andq %rax,%rax
+    je brk
+    mrmovq (%rax),%rcx
+    addq %rcx,%rbx
+    mrmovq 8(%rax),%rax
+    jmp loop
+
+brk:
+    ret
+
+    .pos 0x200
+stack:
+

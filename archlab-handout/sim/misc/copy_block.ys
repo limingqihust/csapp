@@ -1,0 +1,54 @@
+    .pos 0
+    irmovq stack,%rsp
+    call main
+    halt
+
+    .align 8
+src:   
+    .quad 0x0001
+    .quad 0x0020
+    .quad 0x0300
+    .quad 0x4000
+
+dst:
+    .quad 0x000a
+    .quad 0x00b0
+    .quad 0x0c00
+    .quad 0xd000
+
+main:
+    irmovq src,%rsi
+    irmovq dst,%rdi
+    irmovq $4,%rax
+    call copy_block
+    ret
+
+
+# %rsi:源地址
+# %rdi:目的地址
+# %rax:长度
+# %rbx:result
+# %rcx:源操作数
+# %rdx:目的操作数
+copy_block:
+    irmovq $0,%rbx
+    irmovq $8,%r8
+    irmovq $1,%r9
+loop:
+    andq %rax,%rax
+    je brk
+
+    mrmovq (%rsi),%rcx
+    rmmovq %rcx,(%rdi)
+    addq %r8,%rsi
+    addq %r8,%rdi
+    xorq %rcx,%rbx
+    subq %r9,%rax
+    jmp loop
+
+brk:
+    ret
+
+    .pos 0x200
+stack:
+
