@@ -31,7 +31,6 @@ COPY1:
     mrmovq (%rdi),%r8
     mrmovq 8(%rdi),%r9
     mrmovq 16(%rdi),%r10
-    
     rmmovq %r8,(%rsi)
     rmmovq %r9,8(%rsi)
     rmmovq %r10,16(%rsi)
