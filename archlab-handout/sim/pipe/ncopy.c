@@ -9,18 +9,38 @@ word_t src[8], dst[8];
  * ncopy - copy src to dst, returning number of positive ints
  * contained in src array.
  */
+#define T 8
 word_t ncopy(word_t *src, word_t *dst, word_t len)
 {
     word_t count = 0;
     word_t val;
 
-    while (len > 0) {
-	val = *src++;
-	*dst++ = val;
-	if (val > 0)
-	    count++;
-	len--;
-    }
+    
+	while(len>T)
+	{
+		val = *src;
+        *dst = val;
+
+        val = *(src+1);
+        *(dst+1) = val;
+
+        val = *(src+2);
+        *(dst+2) = val;
+
+        val = *(src+3);
+        *(dst+3) = val;
+		src+=T;
+		dst+=T;
+        len-=T;
+	}
+
+	while(len>0)
+	{
+		val = *src++;
+        *dst++ = val;
+        len--;
+	}
+
     return count;
 }
 /* $end ncopy */

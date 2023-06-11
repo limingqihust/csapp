@@ -3,6 +3,9 @@
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission"; // 请不要修改“Transpose_submission”
 
+
+// A:0x0010d080
+// B:0x0014d080
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
 
@@ -12,7 +15,7 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
         {
             for (int j = 0; j < M; j += 8)
             {
-                if (i == j)
+                if (i==j)
                 {
                     for (int p = 0; p < 8; p++)
                     {
@@ -68,11 +71,10 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
             {
 
                 int buf0, buf1, buf2, buf3, buf4, buf5, buf6, buf7;
-               
                 if(i==j && i!=M-8)
                 {
                     
-                    //A[2,1](i,j)->C[1,1](j,i+8) 转置
+                    //A[i,j](2,1)->B[j,i+8](1,1) 转置
                     for(int p=0;p<4;p++)
                     {
                         for(int q=0;q<4;q++)
@@ -80,7 +82,7 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
                             B[j+p][i+8+q]=A[i+4+q][j+p];
                         } 
                     }
-                    //A[2,2](i,j)->C[1,2](j,i+8) 转置
+                    //A[i,j](2,2)->B[j,i+8](1,2) 转置
                     for(int p=0;p<4;p++)
                     {
                         for(int q=0;q<4;q++)
@@ -109,7 +111,31 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
                         B[j+p][i+6]=buf6;
                         B[j+p][i+7]=buf7;
                     }
-                    // B[1,2]->buf C[1,1]->B[1,2] buf->B[2,1]
+
+                    // B[1,1] 转置
+                    for(int p=0;p<4;p++)
+                    {
+                        for(int q=p+1;q<4;q++)
+                        {
+                            B[j+p][i+q]^=B[j+q][i+p];
+                            B[j+q][i+p]^=B[j+p][i+q];
+                            B[j+p][i+q]^=B[j+q][i+p];
+                        }
+                    }
+                    // B[1,2] 转置
+                    for(int p=0;p<4;p++)
+                    {
+                        for(int q=p+1;q<4;q++)
+                        {
+                            B[j+p][i+4+q]^=B[j+q][i+4+p];
+                            B[j+q][i+4+p]^=B[j+p][i+4+q];
+                            B[j+p][i+4+q]^=B[j+q][i+4+p];
+                        }
+                    }
+
+
+
+                    // B[j,i](1,2)->buf B[j,i+8](1,1)->B[j,i](1,2) buf->B[j,i](2,1)
                     for(int p=0;p<4;p++)
                     {
                         buf0=B[j+p][i+4+0];
@@ -126,26 +152,7 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
                         B[j+4+p][i+3]=buf3;
                     }
 
-                    // B[1,1] 转置
-                    for(int p=0;p<4;p++)
-                    {
-                        for(int q=p+1;q<4;q++)
-                        {
-                            B[j+p][i+q]^=B[j+q][i+p];
-                            B[j+q][i+p]^=B[j+p][i+q];
-                            B[j+p][i+q]^=B[j+q][i+p];
-                        }
-                    }
-                    // B[2,1] 转置
-                    for(int p=0;p<4;p++)
-                    {
-                        for(int q=p+1;q<4;q++)
-                        {
-                            B[j+4+p][i+q]^=B[j+4+q][i+p];
-                            B[j+4+q][i+p]^=B[j+4+p][i+q];
-                            B[j+4+p][i+q]^=B[j+4+q][i+p];
-                        }
-                    }
+                    
                     // C[1,2]->B[2,2] 转置
                     for(int p=0;p<4;p++)
                     {
@@ -156,6 +163,7 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
                     }
                     continue;
                 }
+                
                 // A[1,1]->B[1,1] 转置
                 // A[1,2]->B[1,2] 转置
                 
@@ -221,7 +229,7 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
     }
     else
     {
-#define T 16
+#define T 14
         for (int i = 0; i < N; i += T)
         {
             for (int j = 0; j < M; j += T)
@@ -239,7 +247,6 @@ char trans_desc[] = "Simple row-wise scan transpose";
 void trans(int M, int N, int A[N][M], int B[M][N])
 {
     int i, j, tmp;
-
     for (i = 0; i < N; i++)
     {
         for (j = 0; j < M; j++)
