@@ -37,7 +37,6 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
-#define MAXP                0xffffffff
 
 #define WSIZE               4                       // 字长 4个字节 / 头部或脚部的字节数
 #define DSIZE               8                       // 双字长 8个字节
@@ -56,26 +55,18 @@ team_t team = {
 #define HDRP(bp)            ((char*)(bp)-WSIZE)     // 由块的指针计算头部的地址
 #define FTRP(bp)            ((char*)(bp)+GET_SIZE(HDRP(bp))-DSIZE)      // 由块的指针计算尾部的地址
 
-#define GET_PRED(bp)        GET(bp)                                     // 由块的指针计算前驱块的地址 只用在空闲块
-#define GET_SUCC(bp)        GET((char*)(bp)+WSIZE)                   // 由块的地址计算后驱块的地址 只用在空闲块
-#define PUT_PRED(bp,pred)   PUT(bp,pred)                                // 将bp指向的块的前驱块地址设为pred
-#define PUT_SUCC(bp,succ)   PUT((char*)(bp)+WSIZE,succ)              // 将bp指向的块的后驱块地址设为succ
-
 #define NEXT_BLKP(bp)       ((char*)(bp)+GET_SIZE(((char*)(bp)-WSIZE))) // 由当前块的地址计算下一个块的地址
 #define PREV_BLKP(bp)       ((char*)(bp)-GET_SIZE(((char*)(bp)-DSIZE))) // 由当前块的地址计算上一个块的地址
 
 
 static char* heap_listp;
 static char* next_fit_pos;
-static char* free_listp;
-static char* malloc_listp;
-
 static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
 static void* find_first_fit(size_t asize);
+static void* find_next_fit(size_t asize);
 static void place(void* bp,size_t asize);
 static void print_info();
-static void insert_into_free_list(void* bp);
 
 
 int mm_init(void)
@@ -89,10 +80,9 @@ int mm_init(void)
     PUT(heap_listp+(3*WSIZE),PACK(0,1));    // 结尾块
     heap_listp+=(2*WSIZE);
     
-
+    next_fit_pos=heap_listp;
     if(extend_heap(CHUNKSIZE/WSIZE)==NULL)
         return -1;
-    free_listp=NEXT_BLKP(heap_listp);
     return 0;
 }
 
@@ -109,7 +99,7 @@ void *mm_malloc(size_t size)
     else
         asize=DSIZE*((size+(DSIZE)+(DSIZE-1))/DSIZE);
     // 寻找一个可用的块
-    if((bp=find_first_fit(asize))!=NULL)
+    if((bp=find_next_fit(asize))!=NULL)
     {
         place(bp,asize);
         return bp;
@@ -245,6 +235,27 @@ void* find_first_fit(size_t asize)
     return NULL;
 }
 
+static void* find_next_fit(size_t asize)
+{
+    char* bp=next_fit_pos;
+    do
+    {
+        if(GET_SIZE(HDRP(bp))>=asize && !GET_ALLOC(HDRP(bp)))
+        {
+            next_fit_pos=bp;
+            return bp;
+        }
+        bp=NEXT_BLKP(bp);
+        if(GET_SIZE(HDRP(bp))==0)
+        {
+            bp=heap_listp;
+        }
+    } while (bp!=next_fit_pos);
+    
+    return NULL;
+
+}
+
 
 /**
  * 将请求块放置 
@@ -293,21 +304,4 @@ void print_info()
 }
 
 
-/**
- * 将bp指向的块插入到空闲列表中
-*/
-void insert_into_free_list(void* bp)
-{
-    char* now_bp=free_listp;
-    char* pred_bp=GET_PRED(bp);
-    char* succ_bp=GET_SUCC(bp);
-    while(bp>succ_bp)
-    {
-        now_bp=NEXT_BLKP(now_bp);
-        succ_bp=GET_SUCC(now_bp);
-    }
-    PUT_SUCC(bp,succ_bp);
-    PUT_PRED(bp,now_bp);
-    PUT_SUCC(now_bp,bp);
-}
 
