@@ -82,8 +82,25 @@ void listjobs(struct job_t *jobs);
 void usage(void);
 void unix_error(char *msg);
 void app_error(char *msg);
+
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+void Sigemptyset(sigset_t *set);
+void Sigfillset(sigset_t *set);
+void Sigaddset(sigset_t *set, int signum);
+void Sigdelset(sigset_t *set, int signum);
+int Sigismember(const sigset_t *set, int signum);
+pid_t Fork(void);
+void Execve(const char *filename, char *const argv[], char *const envp[]);
+pid_t Wait(int *status);
+pid_t Waitpid(pid_t pid, int *iptr, int options);
+void Kill(pid_t pid, int signum);
+unsigned int Sleep(unsigned int secs);
+void Pause(void);
+unsigned int Alarm(unsigned int seconds);
+void Setpgid(pid_t pid, pid_t pgid);
+pid_t Getpgrp();
 
 /*
  * main - The shell's main routine 
@@ -152,6 +169,7 @@ int main(int argc, char **argv)
     exit(0); /* control never reaches here */
 }
   
+
 /* 
  * eval - Evaluate the command line that the user has just typed in
  * 
@@ -162,19 +180,57 @@ int main(int argc, char **argv)
  * each child process must have a unique process group ID so that our
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.  
+ * 调用parseline解释命令行参数 
+ * 调用builtin_cmd，检查第一个命令行参数是否为内嵌命令 
+ * 如果是 return 1
+ * 否则 return 0 需要eval创建一个子进程 并在子进程中所请求的程序
+ * 如果要求在后台运行该程序 那么shell继续等待下一个命令
+ * 否则使用waitpid函数等待作业中止 终止后再开始下一轮迭代
 */
 void eval(char *cmdline) 
 {
-    char cmd[MAXLINE];
-    char* argv[MAXARGS];                                // 命令行参数向量
-    int is_background_job=parseline(cmdline,argv);      // 解析命令行 共构建命令行参数
+    char* argv[MAXARGS];        // 参数向量
+    char buf[MAXLINE];
+    int bg;
+    int state;
+    pid_t pid;
+    strcpy(buf,cmdline);
+    bg=parseline(buf,argv);     // 是1表示后台运行 0表示前台运行
 
-    if(builtin_cmd(argv))                               // 判断是否位内置指令
+    state=bg?BG:FG;
+    if(argv[0]==NULL)
+        return;
+    sigset_t mask_all,mask_one,prev_one;
+    Sigfillset(&mask_all);
+    Sigemptyset(&mask_one);
+    Sigaddset(&mask_one,SIGCHLD);
+    if(builtin_cmd(argv)==0)                        // 不是内嵌命令    
     {
-        
+        Sigprocmask(SIG_BLOCK,&mask_one,&prev_one); // 阻塞SIGCHLD信号
+        if((pid=Fork())==0)                         // 子进程
+        {
+            Sigprocmask(SIG_SETMASK,&prev_one,NULL);// 解除阻塞
+            Setpgid(0,0);
+            Execve(argv[0],argv,environ);
+        }
+        else                                        // 父进程
+        {
+            Sigprocmask(SIG_BLOCK,&mask_all,NULL);  // 阻塞所有信号？？？ 为什么又要阻塞一遍
+            addjob(jobs,pid,state,cmdline);
+            Sigprocmask(SIG_SETMASK,&mask_one,NULL);
+            if(bg)                                  // 后台运行
+            {
+                Sigprocmask(SIG_SETMASK,&mask_all,NULL);
+                printf("[%d] (%d) %s",pid2jid(pid),pid,cmdline);
+            }
+            else                                    // 前台运行
+            {
+                waitfg(pid);
+            }
+            Sigprocmask(SIG_SETMASK,&prev_one,NULL);// 解除阻塞
+        }
     }
-
-    return;
+    return ;
 }
 
 /* 
@@ -183,6 +239,10 @@ void eval(char *cmdline)
  * Characters enclosed in single quotes are treated as a single
  * argument.  Return true if the user has requested a BG job, false if
  * the user has requested a FG job.  
+ * 解析以空格相隔的命令行参数 构造argv向量
+ * 第一个参数是一个内嵌命令或者可执行文件
+ * 如果最后一个参数是"&",return 1 表示应该在后台运行
+ * 否则返回0 表示应该在前台运行 shell应该等待它完成
  */
 int parseline(const char *cmdline, char **argv) 
 {
@@ -237,9 +297,12 @@ int parseline(const char *cmdline, char **argv)
 /* 
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
+ * 是内嵌命令 则立即执行 返回1 
+ * 否则返回0
  */
 int builtin_cmd(char **argv) 
 {
+
     if(strcmp(argv[0],"quit")==0)
     {
         exit(0);
@@ -247,18 +310,18 @@ int builtin_cmd(char **argv)
     else if(strcmp(argv[0],"jobs")==0)
     {
         listjobs(jobs);
-        return 1;
+        return 1;               // 是内嵌命令
     }
     else if(strcmp(argv[0],"bg")==0 || strcmp(argv[0],"fg")==0)
     {
         do_bgfg(argv);
-        return 1;
+        return 1;               // 是内嵌命令
     }
     else if(strcmp(argv[0],"&")==0)
     {
-        return 1;
+        return 1;               // 是内嵌命令 
     }
-    return 0;     /* not a builtin command */
+    return 0;                   // 不是内嵌命令
 }
 
 /* 
@@ -274,6 +337,8 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+    while(fgpid(jobs))
+        sleep(1);
     return;
 }
 
@@ -290,8 +355,24 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+    int olderrno=errno;
+    sigset_t mask_all,prev_all;
+    pid_t pid;
+
+    Sigfillset(&mask_all);
+    while((pid=waitpid(-1,NULL,0))>0)
+    {
+        Sigprocmask(SIG_BLOCK,&mask_all,&prev_all);
+        deletejob(jobs,pid);
+        Sigprocmask(SIG_SETMASK,&prev_all,NULL);
+    }
+    if(errno!=ECHILD)
+        unix_error("waitpid error\n");
+    errno=olderrno;
     return;
 }
+
+
 
 /* 
  * sigint_handler - The kernel sends a SIGINT to the shell whenver the
@@ -522,6 +603,122 @@ handler_t *Signal(int signum, handler_t *handler)
     return (old_action.sa_handler);
 }
 
+
+void Sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
+{
+    if (sigprocmask(how, set, oldset) < 0)
+	unix_error("Sigprocmask error");
+    return;
+}
+
+void Sigemptyset(sigset_t *set)
+{
+    if (sigemptyset(set) < 0)
+	unix_error("Sigemptyset error");
+    return;
+}
+
+void Sigfillset(sigset_t *set)
+{ 
+    if (sigfillset(set) < 0)
+	unix_error("Sigfillset error");
+    return;
+}
+
+void Sigaddset(sigset_t *set, int signum)
+{
+    if (sigaddset(set, signum) < 0)
+	unix_error("Sigaddset error");
+    return;
+}
+
+void Sigdelset(sigset_t *set, int signum)
+{
+    if (sigdelset(set, signum) < 0)
+	unix_error("Sigdelset error");
+    return;
+}
+
+int Sigismember(const sigset_t *set, int signum)
+{
+    int rc;
+    if ((rc = sigismember(set, signum)) < 0)
+	unix_error("Sigismember error");
+    return rc;
+}
+
+
+pid_t Fork(void) 
+{
+    pid_t pid;
+
+    if ((pid = fork()) < 0)
+	unix_error("Fork error");
+    return pid;
+}
+
+void Execve(const char *filename, char *const argv[], char *const envp[]) 
+{
+    if (execve(filename, argv, envp) < 0)
+	unix_error("Execve error");
+}
+
+pid_t Wait(int *status) 
+{
+    pid_t pid;
+
+    if ((pid  = wait(status)) < 0)
+	unix_error("Wait error");
+    return pid;
+}
+
+pid_t Waitpid(pid_t pid, int *iptr, int options) 
+{
+    pid_t retpid;
+
+    if ((retpid  = waitpid(pid, iptr, options)) < 0) 
+	unix_error("Waitpid error");
+    return(retpid);
+}
+
+void Kill(pid_t pid, int signum) 
+{
+    int rc;
+
+    if ((rc = kill(pid, signum)) < 0)
+	unix_error("Kill error");
+}
+
+void Pause() 
+{
+    (void)pause();
+    return;
+}
+
+unsigned int Sleep(unsigned int secs) 
+{
+    unsigned int rc;
+
+    if ((rc = sleep(secs)) < 0)
+	unix_error("Sleep error");
+    return rc;
+}
+
+unsigned int Alarm(unsigned int seconds) {
+    return alarm(seconds);
+}
+ 
+void Setpgid(pid_t pid, pid_t pgid) {
+    int rc;
+
+    if ((rc = setpgid(pid, pgid)) < 0)
+	unix_error("Setpgid error");
+    return;
+}
+
+pid_t Getpgrp(void) {
+    return getpgrp();
+}
 /*
  * sigquit_handler - The driver program can gracefully terminate the
  *    child shell by sending it a SIGQUIT signal.
